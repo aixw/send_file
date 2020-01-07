@@ -4,8 +4,9 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.*;
+import java.util.Iterator;
+import java.util.Set;
 
 /**
  * java nio mmap
@@ -33,17 +34,51 @@ public class Client {
             getConnectParams(args);
         }
 
+        SocketChannel socketChannel = SocketChannel.open();
+        socketChannel.connect(new InetSocketAddress(SERVER_HOST, SERVER_PROT));
+        socketChannel.configureBlocking(false);
+
+        Selector selector = Selector.open();
+        socketChannel.register(selector, SelectionKey.OP_WRITE);
+
+        while (true) {
+
+            long selKeyNum = selector.select();
+            if (selKeyNum == 0) {
+                continue;
+            }
+
+            System.out.println("selKeyNum==============" + selKeyNum);
+
+            Set<SelectionKey> selectionKeys = selector.selectedKeys();
+            Iterator<SelectionKey> selectionKeyIterator = selectionKeys.iterator();
+            while (selectionKeyIterator.hasNext()) {
+                SelectionKey selectionKey = selectionKeyIterator.next();
+                if (selectionKey.isAcceptable()) {
+                    System.out.println("accept");
+                } else if (selectionKey.isReadable()) {
+                    System.out.println("read come in");
+                } else if (selectionKey.isWritable()) {
+                    System.out.println("write come in");
+                    doWrite(selectionKey);
+
+                }
+                selectionKeyIterator.remove();
+            }
+
+        }
+
+    }
+
+    private static void doWrite(SelectionKey selectionKey) throws Exception {
         long start =System.currentTimeMillis();
         File inputFile = new File(FILE_PATH);
         FileInputStream fileInputStream = new FileInputStream(inputFile);
         FileChannel fc = fileInputStream.getChannel();
 
         long fileLen = fc.size();
+        SocketChannel socketChannel = (SocketChannel)selectionKey.channel();
         System.out.println("当前传出文件大小" + fileLen);
-
-        SocketChannel socketChannel = SocketChannel.open();
-        socketChannel.connect(new InetSocketAddress(SERVER_HOST, SERVER_PROT));
-
         //发送文件名
         sendString(socketChannel, inputFile.getName());
         //检查服务端是否接收到文件名
@@ -66,9 +101,7 @@ public class Client {
                 size += bufferSize;
             }
             socketChannel.write(mappedByteBuffer);
-            mappedByteBuffer.flip();
-            mappedByteBuffer.clear();
-//            mappedByteBuffer.rewind();
+            mappedByteBuffer.rewind();
             System.out.println("size = " + size + ", limit=" + mappedByteBuffer.limit());
         }
 
@@ -76,6 +109,7 @@ public class Client {
         socketChannel.close();
         long end = System.currentTimeMillis();
         System.out.println("size = " + size + " ,have spend " + (end - start) + "毫秒");
+
     }
 
     private static void getConnectParams(String[] args) throws Exception {
