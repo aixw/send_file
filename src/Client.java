@@ -3,11 +3,12 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 
 /**
- * java nio zero copy
+ * java nio mmap
  * 客户端启动
  * @author xiongqiqmeng
  * @since 2019/12/20 16:33
@@ -52,10 +53,23 @@ public class Client {
             }
         }
 
-        //zero copy发送文件到socket
         long size = 0;
+        int bufferSize = 1024 * 1024 * 8;
+        MappedByteBuffer mappedByteBuffer;
+
         while (size < fileLen) {
-            size += fc.transferTo(size, fileLen - size, socketChannel);
+            if ((size + bufferSize) > fileLen) {
+                mappedByteBuffer = fc.map(FileChannel.MapMode.READ_ONLY, size, fileLen - size);
+                size += fileLen - size;
+            } else {
+                mappedByteBuffer = fc.map(FileChannel.MapMode.READ_ONLY, size, bufferSize);
+                size += bufferSize;
+            }
+            socketChannel.write(mappedByteBuffer);
+            mappedByteBuffer.flip();
+            mappedByteBuffer.clear();
+//            mappedByteBuffer.rewind();
+            System.out.println("size = " + size + ", limit=" + mappedByteBuffer.limit());
         }
 
         fc.close();
