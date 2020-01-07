@@ -1,6 +1,14 @@
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.channels.*;
+import java.util.Iterator;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -17,30 +25,44 @@ public class Server {
     /**
      * 服务端文件存储 path
      */
-    public static final String SERVER_DIR = "/data/webroot/";
+    public static final java.lang.String SERVER_DIR = "/data/webroot/";
 
     /**
      * 服务端端口
      */
-    public static final int SERVER_POST = 1111;
+    public static final int SERVER_PORT = 1111;
 
     public static void main(String[] args) throws Exception {
-        ServerSocket serverSocket = new ServerSocket(SERVER_POST);
+        ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
+        serverSocketChannel.socket().bind(new InetSocketAddress(SERVER_PORT));
+        serverSocketChannel.configureBlocking(false);
 
-        //根目录不存在，则创建
-        File root = new File(SERVER_DIR);
-        if (!root.exists()) {
-            root.mkdirs();
-        }
-
-        int count = 0;
         while (true) {
-            Socket socket = serverSocket.accept();
-            //每个客户端连接创建新的线程
-            new Thread(new TransFileServerRunnable(socket, SERVER_DIR)).start();
-            count++;
-            log.info("客户端数量：" + count);
+            SocketChannel socketChannel = serverSocketChannel.accept();
+            if (socketChannel == null) {
+                continue;
+            }
+
+            System.out.println(readString(socketChannel));
+            sendString(socketChannel, "server send a message");
         }
 
     }
+
+    private static void sendString(SocketChannel socketChannel, String str) throws IOException {
+        ByteBuffer buffer = ByteBuffer.wrap(str.getBytes());
+        socketChannel.write(buffer);
+    }
+
+    private static String readString(SocketChannel socketChannel) throws IOException {
+        StringBuffer sb = new StringBuffer();
+        ByteBuffer byteBuffer = ByteBuffer.allocate(512);
+        socketChannel.read(byteBuffer);
+        byteBuffer.flip();
+        while (byteBuffer.hasRemaining()) {
+            sb.append((char) byteBuffer.get());
+        }
+        return sb.toString();
+    }
+
 }

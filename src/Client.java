@@ -1,4 +1,12 @@
+import sun.swing.StringUIClientPropertyKey;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 
 /**
  * 客户端启动
@@ -10,19 +18,36 @@ public class Client {
     /**
      * 服务端ip
      */
-    public static final String SERVER_HOST = "172.16.246.179";
+    public static final String SERVER_HOST = "127.0.0.1";
     /**
      * 服务端端口
      */
     public static final int SERVER_POST = 1111;
-    /**
-     * 上传文件 path
-     */
-    public static final String FILE_NAME = "order-application.log";
 
     public static void main(String[] args) throws Exception {
-        //每次文件上传单独启动线程
-        new Thread(new TransFileClientRunnable(new Socket(SERVER_HOST, SERVER_POST), FILE_NAME)).start();
+        SocketChannel socketChannel = SocketChannel.open();
+        socketChannel.connect(new InetSocketAddress(SERVER_HOST, SERVER_POST));
+
+        sendString(socketChannel, "just a simple nio text message");
+        System.out.println(readString(socketChannel));
+        socketChannel.close();
     }
+
+    private static void sendString(SocketChannel socketChannel, String str) throws IOException {
+        ByteBuffer buffer = ByteBuffer.wrap(str.getBytes());
+        socketChannel.write(buffer);
+    }
+
+    private static String readString(SocketChannel socketChannel) throws IOException {
+        StringBuffer sb = new StringBuffer();
+        ByteBuffer byteBuffer = ByteBuffer.allocate(512);
+        socketChannel.read(byteBuffer);
+        byteBuffer.flip();
+        while (byteBuffer.hasRemaining()) {
+            sb.append((char) byteBuffer.get());
+        }
+        return sb.toString();
+    }
+
 
 }
