@@ -1,38 +1,39 @@
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.net.InetAddress;
+import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.nio.channels.*;
-import java.util.Iterator;
-import java.util.Set;
-import java.util.logging.Logger;
+import java.nio.channels.FileChannel;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 
 /**
  * 服务端启动
  * 文件传输 version 0.1
- * 1、单服务端，支持多客户端同时连接连接（每一个连接独自开启子线程）
- * 2、支持断点续传
- * 3、客户端压缩后传输，服务端解压
  * @author xiongqiqmeng
  * @since 2019/12/20 16:33
  */
 public class Server {
-    private static final Logger log = Logger.getLogger(Server.class.getName());
     /**
      * 服务端文件存储 path
      */
-    public static final java.lang.String SERVER_DIR = "/data/webroot/";
+    public static String SERVER_DIR;
 
     /**
      * 服务端端口
      */
-    public static final int SERVER_PORT = 1111;
+    public static int SERVER_PORT;
+
+    /**
+     * buffer size
+     */
+    private static int BUFFER_SIZE = 1024  * 1024 * 10;
 
     public static void main(String[] args) throws Exception {
+        while (SERVER_DIR == null) {
+            getConnectParams(args);
+        }
+
         ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
         serverSocketChannel.socket().bind(new InetSocketAddress(SERVER_PORT));
         serverSocketChannel.configureBlocking(false);
@@ -43,10 +44,53 @@ public class Server {
                 continue;
             }
 
-            System.out.println(readString(socketChannel));
-            sendString(socketChannel, "server send a message");
+            //创建存储路径
+            File dir = new File(SERVER_DIR);
+            if (!dir.exists()) {
+                dir.mkdirs();
+            }
+
+            //获取文件名
+            String fileName = readString(socketChannel);
+            System.out.println("fileName is " + fileName);
+            sendString(socketChannel, "ok");
+            File savePath = new File(SERVER_DIR + File.separator + fileName);
+            System.out.println("savePath is " + savePath.getPath());
+            if (!savePath.exists()) {
+                savePath.createNewFile();
+            }
+
+            //创建接收文件流
+            RandomAccessFile randomAccessFile = new RandomAccessFile(savePath, "rw");
+            FileChannel fc = randomAccessFile.getChannel();
+
+            //数据接收
+            ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
+            while ((socketChannel.read(buffer)) != -1) {
+                buffer.flip();
+                fc.write(buffer);
+                buffer.clear();
+            }
+
+            //文件流关闭
+            randomAccessFile.close();
+            fc.close();
+            socketChannel.close();
+            System.out.println("receive file success");
+
         }
 
+    }
+
+    private static void getConnectParams(String[] args) throws Exception {
+        if (args == null || args.length < 2) {
+            throw new Exception("需传入参数服务器文件存储路径、端口号");
+        }
+
+        SERVER_DIR = args[0];
+        SERVER_PORT = Integer.parseInt(args[1]);
+
+        System.out.println(SERVER_PORT + "|" + SERVER_DIR);
     }
 
     private static void sendString(SocketChannel socketChannel, String str) throws IOException {
