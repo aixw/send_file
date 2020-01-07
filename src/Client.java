@@ -7,6 +7,7 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 
 /**
+ * java nio zero copy
  * 客户端启动
  * @author xiongqiqmeng
  * @since 2019/12/20 16:33
@@ -26,8 +27,6 @@ public class Client {
      */
     private static String FILE_PATH;
 
-    private static final int BUFFER_SIZE = 1024  * 1024 * 10;
-
     public static void main(String[] args) throws Exception {
         while (FILE_PATH == null) {
             getConnectParams(args);
@@ -38,31 +37,31 @@ public class Client {
         FileInputStream fileInputStream = new FileInputStream(inputFile);
         FileChannel fc = fileInputStream.getChannel();
 
-        System.out.println("当前传出文件大小" + fc.size());
+        long fileLen = fc.size();
+        System.out.println("当前传出文件大小" + fileLen);
 
         SocketChannel socketChannel = SocketChannel.open();
         socketChannel.connect(new InetSocketAddress(SERVER_HOST, SERVER_PROT));
 
         //发送文件名
         sendString(socketChannel, inputFile.getName());
-
+        //检查服务端是否接收到文件名
         while (true) {
             if (readString(socketChannel).equals("ok")) {
                 break;
             }
         }
 
-        ByteBuffer byteBuffer = ByteBuffer.allocate(BUFFER_SIZE);
-        while ((fc.read(byteBuffer)) != -1) {
-            byteBuffer.flip();
-            socketChannel.write(byteBuffer);
-            byteBuffer.clear();
+        //zero copy发送文件到socket
+        long size = 0;
+        while (size < fileLen) {
+            size += fc.transferTo(size, fileLen - size, socketChannel);
         }
 
         fc.close();
         socketChannel.close();
         long end = System.currentTimeMillis();
-        System.out.println("have spend " + (end - start) + "毫秒");
+        System.out.println("size = " + size + " ,have spend " + (end - start) + "毫秒");
     }
 
     private static void getConnectParams(String[] args) throws Exception {
