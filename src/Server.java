@@ -1,11 +1,15 @@
+import org.omg.PortableInterceptor.SYSTEM_EXCEPTION;
+
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
+import java.nio.channels.*;
+import java.util.Iterator;
+import java.util.Set;
+import java.util.concurrent.*;
 
 /**
  * 服务端启动
@@ -34,51 +38,89 @@ public class Server {
             getConnectParams(args);
         }
 
+        //创建存储路径
+        File dir = new File(SERVER_DIR);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
         ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
         serverSocketChannel.socket().bind(new InetSocketAddress(SERVER_PORT));
         serverSocketChannel.configureBlocking(false);
 
+        Selector selector = Selector.open();
+        serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
+
         while (true) {
-            SocketChannel socketChannel = serverSocketChannel.accept();
-            if (socketChannel == null) {
+            int keyNum = selector.select();
+//            System.out.println("keyNum ========" + keyNum);
+            if (keyNum == 0) {
                 continue;
             }
 
-            //创建存储路径
-            File dir = new File(SERVER_DIR);
-            if (!dir.exists()) {
-                dir.mkdirs();
+            Set<SelectionKey> selectionKeySet = selector.selectedKeys();
+            Iterator<SelectionKey> selectionKeyIterator = selectionKeySet.iterator();
+            while (selectionKeyIterator.hasNext()) {
+                SelectionKey selectionKey = selectionKeyIterator.next();
+                selectionKeyIterator.remove();
+                if (selectionKey.isAcceptable()) {
+                    System.out.println("accept come in");
+//                    SocketChannel channel = serverSocketChannel.accept();
+                    ServerSocketChannel serverSocketChannel1 = (ServerSocketChannel)selectionKey.channel();
+                    SocketChannel socketChannel = serverSocketChannel1.accept();
+                    socketChannel.configureBlocking(false);
+                    socketChannel.register(selectionKey.selector(), SelectionKey.OP_READ);
+                } else if (selectionKey.isReadable()) {
+                    System.out.println("read come in");
+                    doRead(selectionKey);
+                } else if (selectionKey.isWritable()) {
+                    System.out.println("write come in");
+                    System.out.println(selectionKey.attachment());
+                    doWrite(selectionKey, (String)selectionKey.attachment());
+                }
+
             }
-
-            //获取文件名
-            String fileName = readString(socketChannel);
-            System.out.println("fileName is " + fileName);
-            sendString(socketChannel, "ok");
-            File savePath = new File(SERVER_DIR + File.separator + fileName);
-            System.out.println("savePath is " + savePath.getPath());
-            if (!savePath.exists()) {
-                savePath.createNewFile();
-            }
-
-            //创建接收文件流
-            RandomAccessFile randomAccessFile = new RandomAccessFile(savePath, "rw");
-            FileChannel fc = randomAccessFile.getChannel();
-
-            //数据接收
-            ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-            while ((socketChannel.read(buffer)) != -1) {
-                buffer.flip();
-                fc.write(buffer);
-                buffer.clear();
-            }
-
-            //文件流关闭
-            randomAccessFile.close();
-            fc.close();
-            socketChannel.close();
-            System.out.println("receive file success");
-
         }
+
+    }
+
+    private static void doWrite(SelectionKey selectionKey, String fileName) throws IOException {
+        SocketChannel socketChannel = (SocketChannel)selectionKey.channel();
+        File file = new File(SERVER_DIR + File.separator + fileName);
+        if (!file.exists()) {
+            file.createNewFile();
+        }
+
+        FileChannel fc = new FileOutputStream(file).getChannel();
+
+        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
+        while (socketChannel.read(buffer) != -1) {
+            buffer.flip();
+            fc.write(buffer);
+            buffer.clear();
+        }
+
+        fc.close();
+        socketChannel.close();
+        System.out.println(fileName + " receive success");
+    }
+
+    private static String getTransType(SelectionKey selectionKey) {
+        if (selectionKey == null) {
+            return null;
+        }
+
+        return (String)selectionKey.attachment();
+    }
+
+    private static void doRead(SelectionKey selectionKey) throws IOException {
+        SocketChannel socketChannel = (SocketChannel)selectionKey.channel();
+
+        String fileName = readString(socketChannel);
+        System.out.println("fileName=========" + fileName);
+        sendString(socketChannel, "ok");
+
+        socketChannel.register(selectionKey.selector(), SelectionKey.OP_WRITE, fileName);
 
     }
 
