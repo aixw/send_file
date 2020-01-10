@@ -3,8 +3,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.*;
+import java.nio.channels.FileChannel;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
 
@@ -78,32 +80,34 @@ public class Client {
 
         long fileLen = fc.size();
         SocketChannel socketChannel = (SocketChannel)selectionKey.channel();
+        socketChannel.configureBlocking(false);
         System.out.println("当前传出文件大小" + fileLen);
+
+        socketChannel.register(selectionKey.selector(), SelectionKey.OP_READ);
+
         //发送文件名
         sendString(socketChannel, inputFile.getName());
-        //检查服务端是否接收到文件名
+
         while (true) {
-            if (readString(socketChannel).equals("ok")) {
+            if (readString((SocketChannel) selectionKey.channel()).equals("ok")) {
                 break;
             }
         }
-
+        //zero copy
+        int bufferSize = 1024 * 1024 * 10;
         long size = 0;
-        int bufferSize = 1024 * 1024 * 8;
-        MappedByteBuffer mappedByteBuffer;
-
         while (size < fileLen) {
-            if ((size + bufferSize) > fileLen) {
-                mappedByteBuffer = fc.map(FileChannel.MapMode.READ_ONLY, size, fileLen - size);
-                size += fileLen - size;
-            } else {
-                mappedByteBuffer = fc.map(FileChannel.MapMode.READ_ONLY, size, bufferSize);
-                size += bufferSize;
-            }
-            socketChannel.write(mappedByteBuffer);
-            mappedByteBuffer.rewind();
-            System.out.println("size = " + size + ", limit=" + mappedByteBuffer.limit());
+            size += fc.transferTo(size, bufferSize, socketChannel);
         }
+
+        //channel ByteBuffer
+//        int bufferSize = 1024 * 1024 * 10;
+//        ByteBuffer buffer = ByteBuffer.allocate(bufferSize);
+//        while (fc.read(buffer) != -1) {
+//            buffer.flip();
+//            socketChannel.write(buffer);
+//            buffer.clear();
+//        }
 
         fc.close();
         socketChannel.close();
