@@ -1,15 +1,11 @@
-import org.omg.PortableInterceptor.SYSTEM_EXCEPTION;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.util.Iterator;
 import java.util.Set;
-import java.util.concurrent.*;
 
 /**
  * 服务端启动
@@ -65,9 +61,9 @@ public class Server {
                 selectionKeyIterator.remove();
                 if (selectionKey.isAcceptable()) {
                     System.out.println("accept come in");
-//                    SocketChannel channel = serverSocketChannel.accept();
-                    ServerSocketChannel serverSocketChannel1 = (ServerSocketChannel)selectionKey.channel();
-                    SocketChannel socketChannel = serverSocketChannel1.accept();
+                    SocketChannel socketChannel = serverSocketChannel.accept();
+//                    ServerSocketChannel serverSocketChannel1 = (ServerSocketChannel)selectionKey.channel();
+//                    SocketChannel socketChannel = serverSocketChannel1.accept();
                     socketChannel.configureBlocking(false);
                     socketChannel.register(selectionKey.selector(), SelectionKey.OP_READ);
                 } else if (selectionKey.isReadable()) {
@@ -76,7 +72,7 @@ public class Server {
                 } else if (selectionKey.isWritable()) {
                     System.out.println("write come in");
                     System.out.println(selectionKey.attachment());
-                    doWrite(selectionKey, (String)selectionKey.attachment());
+                    doWrite(selectionKey, (FileInfo)selectionKey.attachment());
                 }
 
             }
@@ -84,25 +80,41 @@ public class Server {
 
     }
 
-    private static void doWrite(SelectionKey selectionKey, String fileName) throws IOException {
+    private static void doWrite(SelectionKey selectionKey, FileInfo fileInfo) throws IOException {
         SocketChannel socketChannel = (SocketChannel)selectionKey.channel();
-        File file = new File(SERVER_DIR + File.separator + fileName);
+        File file = new File(SERVER_DIR + File.separator + fileInfo.getFileName());
         if (!file.exists()) {
             file.createNewFile();
         }
 
         FileChannel fc = new FileOutputStream(file).getChannel();
+        long fileLen = fileInfo.getFileLen();
 
-        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-        while (socketChannel.read(buffer) != -1) {
-            buffer.flip();
-            fc.write(buffer);
-            buffer.clear();
+        System.out.println("write fileLen = " + fileLen);
+
+
+//        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
+//        while (socketChannel.read(buffer) != -1) {
+//            buffer.flip();
+//            fc.write(buffer);
+//            buffer.clear();
+//        }
+        long size = 0;
+        while (size < fileLen) {
+            size += fc.transferFrom(socketChannel, size, fileLen - size);
         }
+
+
+//        fc.transferFrom(socketChannel, 0, )
+//        while (!socketChannel.finishConnect()) {
+//            fc.transferFrom(socketChannel, 0, fileLen);
+//        }
+
+
 
         fc.close();
         socketChannel.close();
-        System.out.println(fileName + " receive success");
+//        System.out.println(fileInfo.getFileName() + " receive success");
     }
 
     private static String getTransType(SelectionKey selectionKey) {
@@ -117,10 +129,20 @@ public class Server {
         SocketChannel socketChannel = (SocketChannel)selectionKey.channel();
 
         String fileName = readString(socketChannel);
-        System.out.println("fileName=========" + fileName);
         sendString(socketChannel, "ok");
+        String fileLenStr = "";
+        long fileLen = 0;
+        while (isEmpty(fileLenStr = readString(socketChannel))) {
+            //do nothing
+        }
+        fileLen = Long.valueOf(fileLenStr);
+        sendString(socketChannel, "ok");
+        System.out.println("fileName=========" + fileName);
+        System.out.println("fileLen=========" + fileLen);
+        FileInfo fileInfo = new FileInfo(fileName, fileLen);
 
-        socketChannel.register(selectionKey.selector(), SelectionKey.OP_WRITE, fileName);
+        socketChannel.configureBlocking(false);
+        socketChannel.register(selectionKey.selector(), SelectionKey.OP_WRITE, fileInfo);
 
     }
 
@@ -133,6 +155,13 @@ public class Server {
         SERVER_PORT = Integer.parseInt(args[1]);
 
         System.out.println(SERVER_PORT + "|" + SERVER_DIR);
+    }
+
+    private static boolean isEmpty(String str) {
+        if (str == null || str.trim().equalsIgnoreCase("")) {
+            return true;
+        }
+        return false;
     }
 
     private static void sendString(SocketChannel socketChannel, String str) throws IOException {
@@ -151,4 +180,29 @@ public class Server {
         return sb.toString();
     }
 
+    static class FileInfo {
+        private String fileName;
+        private long fileLen;
+
+        public FileInfo(String fileName, long fileLen) {
+            this.fileName = fileName;
+            this.fileLen = fileLen;
+        }
+
+        public String getFileName() {
+            return fileName;
+        }
+
+        public void setFileName(String fileName) {
+            this.fileName = fileName;
+        }
+
+        public long getFileLen() {
+            return fileLen;
+        }
+
+        public void setFileLen(long fileLen) {
+            this.fileLen = fileLen;
+        }
+    }
 }

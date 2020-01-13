@@ -3,6 +3,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.LongBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 
@@ -47,7 +48,14 @@ public class Client {
 
         //发送文件名
         sendString(socketChannel, inputFile.getName());
-
+        while (true) {
+            if (readString(socketChannel).equals("ok")) {
+                break;
+            }
+        }
+        //发送文件长度
+        System.out.println("fileLen str = " + String.valueOf(fileLen));
+        sendString(socketChannel, String.valueOf(fileLen));
         while (true) {
             if (readString(socketChannel).equals("ok")) {
                 break;

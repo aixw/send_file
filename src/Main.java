@@ -15,20 +15,15 @@ public class Main {
     public static final int LEN = 512;
 
     public static void main(String[] args) throws Exception {
-        File file = new File("1.txt");
-        RandomAccessFile randomAccessFile = new RandomAccessFile(file, "rw");
-        FileChannel fc = randomAccessFile.getChannel();
-        MappedByteBuffer mappedByteBuffer = fc.map(FileChannel.MapMode.READ_WRITE, 0, LEN);
+        String str = "";
+        System.out.println(isEmpty(str));
+    }
 
-        mappedByteBuffer.put(ByteBuffer.wrap("just a simple test for java nio mmap write a1".getBytes()));
-        mappedByteBuffer.flip();
-
-        while (mappedByteBuffer.hasRemaining()) {
-            System.out.print((char)mappedByteBuffer.get());
+    private static boolean isEmpty(String str) {
+        if (str == null || str.trim().equalsIgnoreCase("")) {
+            return true;
         }
-
-        fc.close();
-        randomAccessFile.close();
+        return false;
     }
 
 }
